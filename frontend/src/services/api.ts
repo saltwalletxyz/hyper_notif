@@ -1,0 +1,235 @@
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import {
+  User,
+  AuthResponse,
+  Alert,
+  CreateAlertRequest,
+  UpdateAlertRequest,
+  Notification,
+  MarketData,
+  AccountSummary,
+  ApiError,
+} from '../types';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
+class ApiService {
+  private client: AxiosInstance;
+
+  constructor() {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 30000,
+    });
+
+    // Request interceptor to add auth token
+    this.client.interceptors.request.use((config) => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    });
+
+    // Response interceptor for error handling
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError<ApiError>) => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }
+        
+        return Promise.reject({
+          message: error.response?.data?.error || error.message,
+          status: error.response?.status,
+          details: error.response?.data?.details,
+        });
+      }
+    );
+  }
+
+  // Auth endpoints
+  register = async (email: string, password: string, name?: string, walletAddress?: string): Promise<AuthResponse> => {
+    const response = await this.client.post<AuthResponse>('/auth/register', {
+      email,
+      password,
+      name,
+      walletAddress,
+    });
+    return response.data;
+  }
+
+  login = async (email: string, password: string): Promise<AuthResponse> => {
+    const response = await this.client.post<AuthResponse>('/auth/login', {
+      email,
+      password,
+    });
+    return response.data;
+  }
+
+  getProfile = async (): Promise<User> => {
+    const response = await this.client.get<User>('/auth/profile');
+    return response.data;
+  }
+
+  updateProfile = async (data: { name?: string; walletAddress?: string }): Promise<User> => {
+    const response = await this.client.put<User>('/auth/profile', data);
+    return response.data;
+  }
+
+  changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    await this.client.post('/auth/change-password', {
+      currentPassword,
+      newPassword,
+    });
+  }
+
+  // Alert endpoints
+  createAlert = async (data: CreateAlertRequest): Promise<Alert> => {
+    const response = await this.client.post<Alert>('/alerts', data);
+    return response.data;
+  }
+
+  getAlerts = async (params?: {
+    page?: number;
+    limit?: number;
+    isActive?: boolean;
+    triggered?: boolean;
+    type?: string;
+    asset?: string;
+  }): Promise<{
+    alerts: Alert[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }> => {
+    const response = await this.client.get('/alerts', { params });
+    return response.data;
+  }
+
+  getAlert = async (id: string): Promise<Alert> => {
+    const response = await this.client.get<Alert>(`/alerts/${id}`);
+    return response.data;
+  }
+
+  updateAlert = async (id: string, data: UpdateAlertRequest): Promise<Alert> => {
+    const response = await this.client.put<Alert>(`/alerts/${id}`, data);
+    return response.data;
+  }
+
+  deleteAlert = async (id: string): Promise<void> => {
+    await this.client.delete(`/alerts/${id}`);
+  }
+
+  resetAlert = async (id: string): Promise<Alert> => {
+    const response = await this.client.post<Alert>(`/alerts/${id}/reset`);
+    return response.data;
+  }
+
+  getAlertStats = async (): Promise<{
+    totalAlerts: number;
+    activeAlerts: number;
+    triggeredAlerts: number;
+    alertsByType: Record<string, number>;
+  }> => {
+    const response = await this.client.get('/alerts/stats');
+    return response.data;
+  }
+
+  // Notification endpoints
+  getNotifications = async (params?: {
+    page?: number;
+    limit?: number;
+    isRead?: boolean;
+    channel?: string;
+    type?: string;
+  }): Promise<{
+    notifications: Notification[];
+    unreadCount: number;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }> => {
+    const response = await this.client.get('/notifications', { params });
+    return response.data;
+  }
+
+  markNotificationAsRead = async (id: string): Promise<void> => {
+    await this.client.post(`/notifications/${id}/read`);
+  }
+
+  markAllNotificationsAsRead = async (): Promise<void> => {
+    await this.client.post('/notifications/mark-all-read');
+  }
+
+  deleteNotification = async (id: string): Promise<void> => {
+    await this.client.delete(`/notifications/${id}`);
+  }
+
+  getNotificationStats = async (): Promise<{
+    total: number;
+    unread: number;
+    byChannel: Record<string, number>;
+    byType: Record<string, number>;
+  }> => {
+    const response = await this.client.get('/notifications/stats');
+    return response.data;
+  }
+
+  // Market data endpoints
+  getAssetContexts = async (): Promise<any[]> => {
+    const response = await this.client.get('/market/assets');
+    return response.data;
+  }
+
+  getMarketSnapshot = async (coin: string): Promise<MarketData> => {
+    const response = await this.client.get<MarketData>(`/market/assets/${coin}`);
+    return response.data;
+  }
+
+  getFundingRates = async (): Promise<any[]> => {
+    const response = await this.client.get('/market/funding-rates');
+    return response.data;
+  }
+
+  getAccountSummary = async (walletAddress?: string): Promise<AccountSummary> => {
+    const response = await this.client.get('/market/account-summary', {
+      params: walletAddress ? { wallet: walletAddress } : {},
+    });
+    return response.data;
+  }
+
+  getUserFills = async (walletAddress?: string, limit = 100): Promise<any[]> => {
+    const response = await this.client.get('/market/user-fills', {
+      params: {
+        ...(walletAddress && { wallet: walletAddress }),
+        limit,
+      },
+    });
+    return response.data;
+  }
+
+  getOpenOrders = async (walletAddress?: string): Promise<any[]> => {
+    const response = await this.client.get('/market/open-orders', {
+      params: walletAddress ? { wallet: walletAddress } : {},
+    });
+    return response.data;
+  }
+
+  getSpotBalances = async (walletAddress?: string): Promise<any> => {
+    const response = await this.client.get('/market/spot-balances', {
+      params: walletAddress ? { wallet: walletAddress } : {},
+    });
+    return response.data;
+  }
+}
+
+export const apiService = new ApiService();

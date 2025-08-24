@@ -1,0 +1,244 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  password       String
+  name           String?
+  walletAddress  String?         @unique
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  
+  alerts         Alert[]
+  notifications  Notification[]
+  portfolios     Portfolio[]
+  webhooks       Webhook[]
+}
+
+model Alert {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  type            AlertType
+  asset           String          // Coin/token symbol
+  market          MarketType      @default(PERPETUAL)
+  condition       AlertCondition
+  value           Float           // Target value for the condition
+  currentValue    Float?          // Current value when last checked
+  
+  isActive        Boolean         @default(true)
+  triggered       Boolean         @default(false)
+  lastTriggered   DateTime?
+  triggerCount    Int             @default(0)
+  
+  notifyEmail     Boolean         @default(true)
+  notifyWebhook   Boolean         @default(false)
+  notifyInApp     Boolean         @default(true)
+  
+  metadata        Json?           // Additional configuration
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  notifications   Notification[]
+  
+  @@index([userId, isActive])
+  @@index([asset, type])
+}
+
+model Notification {
+  id            String              @id @default(cuid())
+  userId        String
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  alertId       String?
+  alert         Alert?              @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  
+  type          NotificationType
+  title         String
+  message       String
+  data          Json?
+  
+  isRead        Boolean             @default(false)
+  readAt        DateTime?
+  
+  channel       NotificationChannel
+  status        NotificationStatus  @default(PENDING)
+  error         String?
+  
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model Portfolio {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  totalValue      Float       @default(0)
+  pnl             Float       @default(0)
+  pnlPercentage   Float       @default(0)
+  
+  positions       Position[]
+  snapshots       PortfolioSnapshot[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Position {
+  id              String      @id @default(cuid())
+  portfolioId     String
+  portfolio       Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  
+  asset           String
+  market          MarketType
+  side            PositionSide
+  size            Float
+  entryPrice      Float
+  currentPrice    Float
+  markPrice       Float?
+  liquidationPrice Float?
+  
+  pnl             Float
+  pnlPercentage   Float
+  funding         Float       @default(0)
+  
+  leverage        Float?
+  margin          Float?
+  
+  openedAt        DateTime
+  closedAt        DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([portfolioId, asset])
+}
+
+model PortfolioSnapshot {
+  id              String      @id @default(cuid())
+  portfolioId     String
+  portfolio       Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  
+  totalValue      Float
+  pnl             Float
+  pnlPercentage   Float
+  timestamp       DateTime
+  
+  positions       Json        // Snapshot of positions at this time
+  
+  createdAt       DateTime    @default(now())
+  
+  @@index([portfolioId, timestamp])
+}
+
+model Webhook {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  url             String
+  secret          String?
+  isActive        Boolean     @default(true)
+  
+  events          String[]    // Array of event types to send
+  
+  lastUsed        DateTime?
+  failureCount    Int         @default(0)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([userId])
+}
+
+model MarketData {
+  id              String      @id @default(cuid())
+  asset           String
+  market          MarketType
+  
+  price           Float
+  volume24h       Float
+  high24h         Float
+  low24h          Float
+  change24h       Float
+  changePercent24h Float
+  
+  fundingRate     Float?
+  openInterest    Float?
+  
+  timestamp       DateTime
+  
+  @@unique([asset, market, timestamp])
+  @@index([asset, market])
+  @@index([timestamp])
+}
+
+enum AlertType {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PRICE_CHANGE_PERCENT
+  VOLUME_SPIKE
+  FUNDING_RATE
+  LIQUIDATION_RISK
+  ORDER_FILLED
+  POSITION_PNL
+  BALANCE_CHANGE
+}
+
+enum AlertCondition {
+  GREATER_THAN
+  LESS_THAN
+  EQUALS
+  CROSSES_ABOVE
+  CROSSES_BELOW
+}
+
+enum MarketType {
+  PERPETUAL
+  SPOT
+}
+
+enum NotificationType {
+  ALERT_TRIGGERED
+  ORDER_UPDATE
+  POSITION_UPDATE
+  SYSTEM_MESSAGE
+  MARKET_UPDATE
+}
+
+enum NotificationChannel {
+  EMAIL
+  WEBHOOK
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  DELIVERED
+}
+
+enum PositionSide {
+  LONG
+  SHORT
+}

@@ -1,0 +1,45 @@
+{
+  "name": "hyperliquid-notify",
+  "version": "1.0.0",
+  "description": "Advanced notification system for Hyperliquid traders",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && PORT=3002 npm start",
+    "start-services": "./start.sh",
+    "stop-services": "./stop.sh",
+    "dev:separate": "echo 'Use: npm run dev:backend (in terminal 1) and npm run dev:frontend (in terminal 2)'",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "start": "npm run start:backend",
+    "start:backend": "cd backend && npm start",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "db:migrate": "cd backend && npx prisma migrate dev",
+    "db:generate": "cd backend && npx prisma generate",
+    "db:studio": "cd backend && npx prisma studio",
+    "db:reset": "cd backend && npx prisma migrate reset",
+    "health": "curl http://localhost:5001/health",
+    "test:api": "curl http://localhost:5001/api/market/assets"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "hyperliquid",
+    "crypto",
+    "trading",
+    "notifications",
+    "alerts",
+    "defi"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
