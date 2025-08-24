@@ -104,10 +104,10 @@ backend/package-lock.json
 *.sqlite
 *.sqlite3
 
-# Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
+# Docker (keep Docker files)
+# .dockerignore
+# Dockerfile  
+# docker-compose.yml
 
 # Misc
 *.orig
