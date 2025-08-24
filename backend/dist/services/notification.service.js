@@ -10,9 +10,13 @@ const axios_1 = __importDefault(require("axios"));
 const database_service_1 = require("./database.service");
 const config_1 = require("../config");
 const crypto_1 = __importDefault(require("crypto"));
+const discord_service_1 = require("./discord.service");
+const telegram_service_1 = require("./telegram.service");
 class NotificationService {
     transporter;
     socketConnections = new Map();
+    discordService;
+    telegramService;
     constructor() {
         // Initialize email transporter
         this.transporter = nodemailer_1.default.createTransport({
@@ -24,6 +28,19 @@ class NotificationService {
                 pass: config_1.config.email.pass,
             },
         });
+        // Initialize Discord and Telegram services
+        this.discordService = new discord_service_1.DiscordService();
+        this.telegramService = new telegram_service_1.TelegramService();
+        // Initialize bot connections
+        this.initializeBots();
+    }
+    async initializeBots() {
+        try {
+            await this.discordService.initialize();
+        }
+        catch (error) {
+            console.error('Failed to initialize Discord service:', error);
+        }
     }
     async createNotification(options) {
         const { userId, alertId, type, title, message, data, channels } = options;
@@ -52,6 +69,14 @@ class NotificationService {
         if (channels.webhook) {
             await this.sendWebhookNotification(userId, { type, title, message, data });
         }
+        // Send Discord notification
+        if (channels.discord) {
+            await this.sendDiscordNotification(userId, title, message, data);
+        }
+        // Send Telegram notification
+        if (channels.telegram) {
+            await this.sendTelegramNotification(userId, title, message, data);
+        }
     }
     async sendEmailNotification(userId, subject, message, data) {
         try {
@@ -72,7 +97,7 @@ class NotificationService {
             const htmlContent = this.generateEmailTemplate(subject, message, data);
             await this.transporter.sendMail({
                 from: `"Hyperliquid Notify" <${config_1.config.email.user}>`,
-                to: user.email,
+                to: user.email || '',
                 subject,
                 text: message,
                 html: htmlContent,
@@ -352,6 +377,92 @@ class NotificationService {
                 readAt: new Date(),
             },
         });
+    }
+    async sendDiscordNotification(userId, title, message, data) {
+        try {
+            const user = await database_service_1.db.user.findUnique({
+                where: { id: userId },
+                select: { discordUserId: true, email: true }
+            });
+            if (!user?.discordUserId) {
+                console.log(`Discord notification skipped: User ${userId} has no Discord ID configured`);
+                return;
+            }
+            const notification = await database_service_1.db.notification.create({
+                data: {
+                    userId,
+                    type: client_1.NotificationType.ALERT_TRIGGERED,
+                    title,
+                    message,
+                    data,
+                    channel: client_1.NotificationChannel.DISCORD,
+                    status: client_1.NotificationStatus.PENDING,
+                },
+            });
+            await this.discordService.sendNotification(user.discordUserId, title, message, data);
+            await database_service_1.db.notification.update({
+                where: { id: notification.id },
+                data: { status: client_1.NotificationStatus.DELIVERED },
+            });
+            console.log(`Discord notification sent to user ${user.discordUserId}`);
+        }
+        catch (error) {
+            console.error('Error sending Discord notification:', error);
+            await database_service_1.db.notification.updateMany({
+                where: {
+                    userId,
+                    channel: client_1.NotificationChannel.DISCORD,
+                    status: client_1.NotificationStatus.PENDING,
+                },
+                data: {
+                    status: client_1.NotificationStatus.FAILED,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                },
+            });
+        }
+    }
+    async sendTelegramNotification(userId, title, message, data) {
+        try {
+            const user = await database_service_1.db.user.findUnique({
+                where: { id: userId },
+                select: { telegramChatId: true, email: true }
+            });
+            if (!user?.telegramChatId) {
+                console.log(`Telegram notification skipped: User ${userId} has no Telegram chat ID configured`);
+                return;
+            }
+            const notification = await database_service_1.db.notification.create({
+                data: {
+                    userId,
+                    type: client_1.NotificationType.ALERT_TRIGGERED,
+                    title,
+                    message,
+                    data,
+                    channel: client_1.NotificationChannel.TELEGRAM,
+                    status: client_1.NotificationStatus.PENDING,
+                },
+            });
+            await this.telegramService.sendNotification(user.telegramChatId, title, message, data);
+            await database_service_1.db.notification.update({
+                where: { id: notification.id },
+                data: { status: client_1.NotificationStatus.DELIVERED },
+            });
+            console.log(`Telegram notification sent to chat ${user.telegramChatId}`);
+        }
+        catch (error) {
+            console.error('Error sending Telegram notification:', error);
+            await database_service_1.db.notification.updateMany({
+                where: {
+                    userId,
+                    channel: client_1.NotificationChannel.TELEGRAM,
+                    status: client_1.NotificationStatus.PENDING,
+                },
+                data: {
+                    status: client_1.NotificationStatus.FAILED,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                },
+            });
+        }
     }
 }
 exports.NotificationService = NotificationService;

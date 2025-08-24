@@ -17,6 +17,8 @@ export class AlertsController {
         notifyEmail = true,
         notifyWebhook = false,
         notifyInApp = true,
+        notifyDiscord = false,
+        notifyTelegram = false,
         metadata,
       } = req.body;
 
@@ -51,6 +53,8 @@ export class AlertsController {
           notifyEmail,
           notifyWebhook,
           notifyInApp,
+          notifyDiscord,
+          notifyTelegram,
           metadata,
         },
       });
@@ -162,6 +166,8 @@ export class AlertsController {
         notifyEmail,
         notifyWebhook,
         notifyInApp,
+        notifyDiscord,
+        notifyTelegram,
         metadata,
       } = req.body;
 
@@ -184,6 +190,8 @@ export class AlertsController {
       if (notifyEmail !== undefined) updateData.notifyEmail = notifyEmail;
       if (notifyWebhook !== undefined) updateData.notifyWebhook = notifyWebhook;
       if (notifyInApp !== undefined) updateData.notifyInApp = notifyInApp;
+      if (notifyDiscord !== undefined) updateData.notifyDiscord = notifyDiscord;
+      if (notifyTelegram !== undefined) updateData.notifyTelegram = notifyTelegram;
       if (metadata !== undefined) updateData.metadata = metadata;
 
       // Reset triggered status if alert is being reactivated

@@ -60,6 +60,9 @@ interface AuthContextType {
   logout: () => void;
   updateProfile: (data: { name?: string; walletAddress?: string }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  walletLogin: (walletAddress: string, walletType?: string) => Promise<void>;
+  registerWithWallet: (walletAddress: string, walletType: string, email: string, name: string, password?: string) => Promise<void>;
+  disconnectWallet: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -185,6 +188,71 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const walletLogin = async (walletAddress: string, walletType?: string): Promise<void> => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    
+    try {
+      const authResponse = await apiService.walletLogin(walletAddress, walletType);
+      
+      // Store in localStorage
+      localStorage.setItem('token', authResponse.token);
+      localStorage.setItem('user', JSON.stringify(authResponse.user));
+      
+      dispatch({ type: 'LOGIN_SUCCESS', payload: authResponse });
+      
+      // Connect WebSocket
+      websocketService.connect(authResponse.token);
+    } catch (error) {
+      dispatch({ type: 'SET_LOADING', payload: false });
+      throw error;
+    }
+  };
+
+  const registerWithWallet = async (
+    walletAddress: string,
+    walletType: string,
+    email: string,
+    name: string,
+    password?: string
+  ): Promise<void> => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    
+    try {
+      const authResponse = await apiService.registerWithWallet(
+        walletAddress,
+        walletType,
+        email,
+        name,
+        password
+      );
+      
+      // Store in localStorage
+      localStorage.setItem('token', authResponse.token);
+      localStorage.setItem('user', JSON.stringify(authResponse.user));
+      
+      dispatch({ type: 'LOGIN_SUCCESS', payload: authResponse });
+      
+      // Connect WebSocket
+      websocketService.connect(authResponse.token);
+    } catch (error) {
+      dispatch({ type: 'SET_LOADING', payload: false });
+      throw error;
+    }
+  };
+
+  const disconnectWallet = async (): Promise<void> => {
+    try {
+      await apiService.disconnectWallet();
+      
+      // Update user profile
+      const updatedUser = await apiService.getProfile();
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      dispatch({ type: 'UPDATE_USER', payload: updatedUser });
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const contextValue: AuthContextType = {
     state,
     login,
@@ -192,6 +260,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     updateProfile,
     changePassword,
+    walletLogin,
+    registerWithWallet,
+    disconnectWallet,
   };
 
   return (

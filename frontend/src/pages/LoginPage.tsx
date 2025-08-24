@@ -11,15 +11,19 @@ import {
   Alert,
   InputAdornment,
   IconButton,
+  Divider,
 } from '@mui/material';
 import {
   Email as EmailIcon,
   Lock as LockIcon,
   Visibility,
   VisibilityOff,
+  AccountBalanceWallet,
 } from '@mui/icons-material';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
+import WalletConnect from '../components/wallet/WalletConnect';
 
 interface LoginForm {
   email: string;
@@ -28,9 +32,11 @@ interface LoginForm {
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, state } = useAuth();
+  const { login, state, walletLogin } = useAuth();
+  const { state: walletState } = useWallet();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   const {
     register,
@@ -45,6 +51,17 @@ export const LoginPage: React.FC = () => {
       navigate('/');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
+    }
+  };
+
+  const handleWalletConnected = async (walletData: { address: string; walletType: string; chainId: number }) => {
+    setError('');
+    try {
+      await walletLogin(walletData.address, walletData.walletType);
+      setWalletModalOpen(false);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.message || 'Wallet login failed. Please try again.');
     }
   };
 
@@ -173,6 +190,33 @@ export const LoginPage: React.FC = () => {
               {isSubmitting || state.isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
 
+            <Divider sx={{ my: 3 }}>
+              <Typography variant="body2" color="text.secondary">
+                OR
+              </Typography>
+            </Divider>
+
+            <Button
+              fullWidth
+              size="large"
+              variant="outlined"
+              onClick={() => setWalletModalOpen(true)}
+              disabled={state.isLoading}
+              startIcon={<AccountBalanceWallet />}
+              sx={{
+                mb: 2,
+                py: 1.5,
+                borderColor: 'primary.main',
+                color: 'primary.main',
+                '&:hover': {
+                  borderColor: 'primary.dark',
+                  backgroundColor: 'primary.50',
+                },
+              }}
+            >
+              Connect Wallet
+            </Button>
+
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">
                 Don't have an account?{' '}
@@ -199,6 +243,12 @@ export const LoginPage: React.FC = () => {
             </Typography>
           </Box>
         </Paper>
+
+        <WalletConnect
+          open={walletModalOpen}
+          onClose={() => setWalletModalOpen(false)}
+          onWalletConnected={handleWalletConnected}
+        />
       </Container>
     </Box>
   );

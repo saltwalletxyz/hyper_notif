@@ -79,6 +79,11 @@ class ApiService {
     return response.data;
   }
 
+  updateNotificationSettings = async (data: { discordUserId?: string; telegramChatId?: string }): Promise<User> => {
+    const response = await this.client.put<User>('/auth/notification-settings', data);
+    return response.data;
+  }
+
   changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
     await this.client.post('/auth/change-password', {
       currentPassword,
@@ -228,6 +233,97 @@ class ApiService {
     const response = await this.client.get('/market/spot-balances', {
       params: walletAddress ? { wallet: walletAddress } : {},
     });
+    return response.data;
+  }
+
+  // Wallet authentication endpoints
+  connectWallet = async (walletAddress: string, walletType: string): Promise<{
+    user?: User;
+    token?: string;
+    isNewUser: boolean;
+    needsRegistration?: boolean;
+  }> => {
+    const response = await this.client.post('/auth/wallet/connect', {
+      walletAddress,
+      walletType,
+    });
+    return response.data;
+  }
+
+  registerWithWallet = async (
+    walletAddress: string,
+    walletType: string,
+    email: string,
+    name: string,
+    password?: string
+  ): Promise<AuthResponse> => {
+    const response = await this.client.post<AuthResponse>('/auth/wallet/register', {
+      walletAddress,
+      walletType,
+      email,
+      name,
+      password,
+    });
+    return response.data;
+  }
+
+  walletLogin = async (walletAddress: string, walletType?: string): Promise<AuthResponse> => {
+    const response = await this.client.post<AuthResponse>('/auth/wallet/login', {
+      walletAddress,
+      walletType,
+    });
+    return response.data;
+  }
+
+  disconnectWallet = async (): Promise<void> => {
+    await this.client.post('/auth/wallet/disconnect');
+  }
+
+  // Hyperliquid user data endpoints
+  getUserData = async (): Promise<{
+    walletAddress: string;
+    lastSync: string;
+    positions: any[];
+    orders: any[];
+    fillHistory: any[];
+    accountValue: number;
+    fundingHistory: any[];
+  }> => {
+    const response = await this.client.get('/hyperliquid/user/data');
+    return response.data;
+  }
+
+  getUserPositions = async (): Promise<{ positions: any[] }> => {
+    const response = await this.client.get('/hyperliquid/user/positions');
+    return response.data;
+  }
+
+  getUserOrders = async (): Promise<{ orders: any[] }> => {
+    const response = await this.client.get('/hyperliquid/user/orders');
+    return response.data;
+  }
+
+  getUserFillHistory = async (limit = 50): Promise<{ fillHistory: any[] }> => {
+    const response = await this.client.get('/hyperliquid/user/fills', {
+      params: { limit },
+    });
+    return response.data;
+  }
+
+  getUserAccountValue = async (): Promise<{
+    accountValue: number;
+    lastSync: string;
+    walletAddress: string;
+  }> => {
+    const response = await this.client.get('/hyperliquid/user/account-value');
+    return response.data;
+  }
+
+  subscribeToUserUpdates = async (): Promise<{
+    message: string;
+    walletAddress: string;
+  }> => {
+    const response = await this.client.post('/hyperliquid/user/subscribe');
     return response.data;
   }
 }

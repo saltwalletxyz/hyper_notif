@@ -7,7 +7,7 @@ class AlertsController {
     async createAlert(req, res) {
         try {
             const userId = req.user.id;
-            const { name, type, asset, market = client_1.MarketType.PERPETUAL, condition, value, notifyEmail = true, notifyWebhook = false, notifyInApp = true, metadata, } = req.body;
+            const { name, type, asset, market = client_1.MarketType.PERPETUAL, condition, value, notifyEmail = true, notifyWebhook = false, notifyInApp = true, notifyDiscord = false, notifyTelegram = false, metadata, } = req.body;
             // Validate input
             if (!name || !type || !asset || !condition || value === undefined) {
                 res.status(400).json({ error: 'Missing required fields' });
@@ -36,6 +36,8 @@ class AlertsController {
                     notifyEmail,
                     notifyWebhook,
                     notifyInApp,
+                    notifyDiscord,
+                    notifyTelegram,
                     metadata,
                 },
             });
@@ -121,7 +123,7 @@ class AlertsController {
         try {
             const userId = req.user.id;
             const { id } = req.params;
-            const { name, value, isActive, notifyEmail, notifyWebhook, notifyInApp, metadata, } = req.body;
+            const { name, value, isActive, notifyEmail, notifyWebhook, notifyInApp, notifyDiscord, notifyTelegram, metadata, } = req.body;
             // Check if alert exists and belongs to user
             const existingAlert = await database_service_1.db.alert.findFirst({
                 where: { id, userId },
@@ -144,6 +146,10 @@ class AlertsController {
                 updateData.notifyWebhook = notifyWebhook;
             if (notifyInApp !== undefined)
                 updateData.notifyInApp = notifyInApp;
+            if (notifyDiscord !== undefined)
+                updateData.notifyDiscord = notifyDiscord;
+            if (notifyTelegram !== undefined)
+                updateData.notifyTelegram = notifyTelegram;
             if (metadata !== undefined)
                 updateData.metadata = metadata;
             // Reset triggered status if alert is being reactivated

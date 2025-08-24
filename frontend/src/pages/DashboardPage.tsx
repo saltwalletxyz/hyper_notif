@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Grid,
   Paper,
@@ -44,9 +44,13 @@ import { apiService } from '../services/api';
 import { websocketService } from '../services/websocket';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
+import { useTheme as useCustomTheme } from '../contexts/ThemeContext';
 import { Alert as AlertType, MarketData, AccountSummary } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { AnimatedCard } from '../components/ui/AnimatedCard';
+import { GlowingButton } from '../components/ui/GlowingButton';
+import { FuturisticProgress } from '../components/ui/FuturisticProgress';
 
 // Register Chart.js components
 ChartJS.register(
@@ -70,9 +74,59 @@ export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { state: authState } = useAuth();
   const { state: notificationState } = useNotifications();
+  const { isDarkMode } = useCustomTheme();
   const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
   const [priceHistory, setPriceHistory] = useState<Record<string, number[]>>({});
   const [accountSummary, setAccountSummary] = useState<AccountSummary | null>(null);
+  const [lastChartUpdate, setLastChartUpdate] = useState<number>(Date.now());
+
+  // Safe parsing functions to handle NaN values
+  const safeParseFloat = (value: string | number | undefined | null, fallback: number = 0): number => {
+    if (value === undefined || value === null || value === '' || value === 'NaN') return fallback;
+    const parsed = typeof value === 'string' ? parseFloat(value) : value;
+    return isNaN(parsed) ? fallback : parsed;
+  };
+
+  const formatCurrency = (value: string | number | undefined | null): string => {
+    const num = safeParseFloat(value);
+    return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatPercentage = (value: string | number | undefined | null): string => {
+    const num = safeParseFloat(value);
+    return num.toFixed(2);
+  };
+
+  // Theme-aware colors
+  const getThemeColors = () => {
+    if (isDarkMode) {
+      return {
+        primary: '#00F5FF',
+        secondary: '#B388FF',
+        accent: '#FF1744',
+        success: '#00E676',
+        warning: '#FFD740',
+        error: '#FF5722',
+        primaryGradient: 'linear-gradient(45deg, #00F5FF 30%, #B388FF 90%)',
+        cardBorder: 'rgba(0, 245, 255, 0.2)',
+        cardBackground: 'linear-gradient(135deg, rgba(0, 245, 255, 0.05) 0%, rgba(179, 136, 255, 0.05) 100%)',
+      };
+    } else {
+      return {
+        primary: '#1565C0',       // Much darker blue
+        secondary: '#512DA8',     // Much darker purple
+        accent: '#C2185B',        // Darker pink
+        success: '#2E7D32',       // Darker green
+        warning: '#F57C00',       // Darker orange
+        error: '#D32F2F',         // Darker red
+        primaryGradient: 'linear-gradient(45deg, #1565C0 30%, #512DA8 90%)',
+        cardBorder: 'rgba(21, 101, 192, 0.4)',
+        cardBackground: 'linear-gradient(135deg, rgba(21, 101, 192, 0.08) 0%, rgba(81, 45, 168, 0.08) 100%)',
+      };
+    }
+  };
+
+  const themeColors = getThemeColors();
 
   // Fetch alert statistics
   const { data: alertStats, isLoading: alertStatsLoading, refetch: refetchAlertStats } = useQuery<DashboardStats>({
@@ -149,33 +203,45 @@ export const DashboardPage: React.FC = () => {
     }
   }, [assets]);
 
+  const handlePriceUpdate = useCallback((data: any) => {
+    if (data.mids) {
+      const newMarketData: Record<string, MarketData> = {};
+      
+      Object.entries(data.mids).forEach(([coin, price]) => {
+        newMarketData[coin] = {
+          coin,
+          price: parseFloat(price as string),
+          volume24h: 0,
+          priceChange24h: 0,
+          priceChangePercent24h: 0,
+          high24h: 0,
+          low24h: 0,
+          timestamp: new Date().toISOString(),
+        };
+      });
+      
+      // Update market data immediately for price display
+      setMarketData(prev => ({ ...prev, ...newMarketData }));
+      
+      // Update price history only every 30 seconds for chart
+      const now = Date.now();
+      setLastChartUpdate(prevTime => {
+        if (now - prevTime >= 30000) { // 30 seconds
+          Object.entries(data.mids).forEach(([coin, price]) => {
+            setPriceHistory(prev => ({
+              ...prev,
+              [coin]: [...(prev[coin] || []).slice(-29), parseFloat(price as string)],
+            }));
+          });
+          return now;
+        }
+        return prevTime;
+      });
+    }
+  }, []);
+
   useEffect(() => {
     // Set up WebSocket listeners for real-time updates
-    const handlePriceUpdate = (data: any) => {
-      if (data.mids) {
-        const newMarketData: Record<string, MarketData> = {};
-        Object.entries(data.mids).forEach(([coin, price]) => {
-          newMarketData[coin] = {
-            coin,
-            price: parseFloat(price as string),
-            volume24h: 0,
-            priceChange24h: 0,
-            priceChangePercent24h: 0,
-            high24h: 0,
-            low24h: 0,
-            timestamp: new Date().toISOString(),
-          };
-
-          // Update price history
-          setPriceHistory(prev => ({
-            ...prev,
-            [coin]: [...(prev[coin] || []).slice(-29), parseFloat(price as string)],
-          }));
-        });
-        setMarketData(prev => ({ ...prev, ...newMarketData }));
-      }
-    };
-
     websocketService.on('price:update', handlePriceUpdate);
     websocketService.subscribeToPrices(['ETH', 'BTC', 'SOL', 'ARB', 'OP']);
 
@@ -187,7 +253,7 @@ export const DashboardPage: React.FC = () => {
     return () => {
       websocketService.off('price:update', handlePriceUpdate);
     };
-  }, [authState.user?.walletAddress]);
+  }, [authState.user?.walletAddress, handlePriceUpdate]);
 
   const StatCard: React.FC<{
     title: string;
@@ -197,17 +263,38 @@ export const DashboardPage: React.FC = () => {
     trend?: number;
     loading?: boolean;
   }> = ({ title, value, icon, color, trend, loading }) => (
-    <Card sx={{ height: '100%' }}>
+    <AnimatedCard variant="glow" glowColor={color} sx={{ height: '100%' }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box>
-            <Typography color="textSecondary" gutterBottom variant="h6">
+            <Typography 
+              color="textSecondary" 
+              gutterBottom 
+              variant="h6"
+              sx={{ 
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}
+            >
               {title}
             </Typography>
             {loading ? (
               <Skeleton width={80} height={40} />
             ) : (
-              <Typography variant="h4" component="div" fontWeight="bold">
+              <Typography 
+                variant="h4" 
+                component="div" 
+                fontWeight="bold"
+                sx={{
+                  color: isDarkMode ? '#FFFFFF' : '#1A1A1A',
+                  textShadow: isDarkMode ? `0 0 20px ${color}60` : `0 2px 8px ${color}40`,
+                  fontSize: '2rem',
+                  letterSpacing: '0.5px',
+                  fontWeight: 700,
+                }}
+              >
                 {value}
               </Typography>
             )}
@@ -221,38 +308,56 @@ export const DashboardPage: React.FC = () => {
                 <Typography
                   variant="body2"
                   color={trend > 0 ? 'success.main' : 'error.main'}
-                  sx={{ ml: 0.5 }}
+                  sx={{ 
+                    ml: 0.5,
+                    fontWeight: 600,
+                    textShadow: trend > 0 ? '0 0 10px rgba(0, 230, 118, 0.5)' : '0 0 10px rgba(244, 67, 54, 0.5)'
+                  }}
                 >
                   {Math.abs(trend)}%
                 </Typography>
               </Box>
             )}
           </Box>
-          <Avatar sx={{ bgcolor: color, width: 56, height: 56 }}>
+          <Avatar 
+            sx={{ 
+              background: `linear-gradient(135deg, ${color} 0%, ${color}60 100%)`,
+              width: 56, 
+              height: 56,
+              boxShadow: `0 8px 24px ${color}40`,
+              border: `2px solid ${color}30`,
+            }}
+          >
             {icon}
           </Avatar>
         </Box>
       </CardContent>
-    </Card>
+    </AnimatedCard>
   );
 
   const PriceChart: React.FC<{ coin: string; data: number[] }> = ({ coin, data }) => {
-    const chartData = {
+    const chartData = useMemo(() => ({
       labels: Array.from({ length: data.length }, (_, i) => i),
       datasets: [
         {
           label: coin,
           data,
-          borderColor: '#667eea',
-          backgroundColor: 'rgba(102, 126, 234, 0.1)',
-          borderWidth: 2,
+          borderColor: isDarkMode ? 'rgba(0, 245, 255, 0.8)' : 'rgba(21, 101, 192, 0.9)',
+          backgroundColor: isDarkMode ? 'rgba(0, 245, 255, 0.1)' : 'rgba(21, 101, 192, 0.15)',
+          borderWidth: 3,
           fill: true,
           tension: 0.4,
+          pointBackgroundColor: isDarkMode ? '#00F5FF' : '#1565C0',
+          pointBorderColor: isDarkMode ? '#00F5FF' : '#1565C0',
+          pointHoverBackgroundColor: isDarkMode ? '#B388FF' : '#512DA8',
+          pointHoverBorderColor: isDarkMode ? '#B388FF' : '#512DA8',
+          shadowColor: isDarkMode ? 'rgba(0, 245, 255, 0.5)' : 'rgba(21, 101, 192, 0.4)',
+          shadowBlur: 10,
         },
       ],
-    };
+    }), [coin, data, isDarkMode]);
 
-    const options = {
+    const options = useMemo(() => ({
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -273,7 +378,10 @@ export const DashboardPage: React.FC = () => {
           radius: 0,
         },
       },
-    };
+      animation: {
+        duration: 0, // Disable animations to prevent flickering
+      },
+    }), []);
 
     return (
       <Box sx={{ height: 100 }}>
@@ -282,15 +390,44 @@ export const DashboardPage: React.FC = () => {
     );
   };
 
+  // Memoized version of PriceChart with deep comparison
+  const MemoizedPriceChart = React.memo(PriceChart, (prevProps, nextProps) => {
+    return (
+      prevProps.coin === nextProps.coin &&
+      prevProps.data.length === nextProps.data.length &&
+      prevProps.data.every((val, index) => val === nextProps.data[index])
+    );
+  });
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" fontWeight="bold">
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          fontWeight="bold"
+          sx={{
+            color: isDarkMode ? 'transparent' : themeColors.primary,
+            background: isDarkMode ? themeColors.primaryGradient : 'transparent',
+            backgroundClip: isDarkMode ? 'text' : 'initial',
+            WebkitBackgroundClip: isDarkMode ? 'text' : 'initial',
+            WebkitTextFillColor: isDarkMode ? 'transparent' : 'initial',
+            textShadow: isDarkMode 
+              ? '0 0 30px rgba(0, 245, 255, 0.3)'
+              : `0 4px 16px ${themeColors.primary}30`,
+            fontSize: '2.5rem',
+            letterSpacing: '0.5px',
+          }}
+        >
           Dashboard
         </Typography>
-        <IconButton onClick={() => refetchAlertStats()}>
-          <Refresh />
-        </IconButton>
+        <GlowingButton 
+          size="small" 
+          onClick={() => refetchAlertStats()}
+          sx={{ minWidth: 'auto', px: 3, py: 1.5 }}
+        >
+          <Refresh sx={{ mr: 1 }} />
+          Refresh
+        </GlowingButton>
       </Box>
 
       {!authState.user?.walletAddress && (
@@ -341,13 +478,31 @@ export const DashboardPage: React.FC = () => {
       <Grid container spacing={3}>
         {/* Market Overview */}
         <Grid xs={12} md={8}>
-          <Card>
+          <AnimatedCard variant="shimmer">
             <CardHeader
-              title="Market Overview"
+              title={
+                <Typography 
+                  variant="h5" 
+                  fontWeight="bold"
+                  sx={{
+                    color: isDarkMode ? 'transparent' : themeColors.primary,
+                    background: isDarkMode ? themeColors.primaryGradient : 'transparent',
+                    backgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitBackgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitTextFillColor: isDarkMode ? 'transparent' : 'initial',
+                  }}
+                >
+                  Market Overview
+                </Typography>
+              }
               action={
-                <IconButton onClick={() => navigate('/market')}>
-                  <Launch />
-                </IconButton>
+                <GlowingButton 
+                  size="small"
+                  onClick={() => navigate('/market')}
+                  sx={{ minWidth: 'auto', px: 2 }}
+                >
+                  <Launch sx={{ fontSize: '1.2rem' }} />
+                </GlowingButton>
               }
             />
             <CardContent>
@@ -355,72 +510,351 @@ export const DashboardPage: React.FC = () => {
                 {['ETH', 'BTC', 'SOL', 'ARB'].map((coin) => {
                   const data = marketData[coin];
                   const history = priceHistory[coin] || [];
+                  
                   return (
                     <Grid xs={12} sm={6} md={3} key={coin}>
-                      <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-                        <Typography variant="h6" fontWeight="bold">
+                      <AnimatedCard 
+                        variant="float" 
+                        sx={{ 
+                          p: 2,
+                          background: themeColors.cardBackground,
+                          border: `1px solid ${themeColors.cardBorder}`,
+                          borderRadius: 3,
+                          position: 'relative',
+                          overflow: 'hidden',
+                          '&::before': {
+                            content: '""',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: isDarkMode 
+                              ? `linear-gradient(135deg, rgba(0, 245, 255, 0.1) 0%, rgba(179, 136, 255, 0.1) 50%, transparent 100%)`
+                              : `linear-gradient(135deg, rgba(0, 145, 234, 0.12) 0%, rgba(124, 77, 255, 0.12) 50%, transparent 100%)`,
+                            opacity: 0,
+                            transition: 'opacity 0.3s ease',
+                            pointerEvents: 'none',
+                          },
+                          '&:hover::before': {
+                            opacity: 1,
+                          },
+                        }}
+                      >
+                        <Typography 
+                          variant="h6" 
+                          fontWeight="bold"
+                          sx={{
+                            mb: 1,
+                            color: themeColors.primary,
+                            textShadow: isDarkMode 
+                              ? `0 0 10px ${themeColors.primary}50`
+                              : `0 2px 8px ${themeColors.primary}30`,
+                            fontSize: '1.1rem',
+                            letterSpacing: '0.5px',
+                          }}
+                        >
                           {coin}
                         </Typography>
                         {data ? (
                           <>
-                            <Typography variant="h5" color="primary">
+                            <Typography 
+                              variant="h5" 
+                              sx={{
+                                color: isDarkMode ? 'transparent' : themeColors.primary,
+                                background: isDarkMode ? themeColors.primaryGradient : 'transparent',
+                                backgroundClip: isDarkMode ? 'text' : 'initial',
+                                WebkitBackgroundClip: isDarkMode ? 'text' : 'initial',
+                                WebkitTextFillColor: isDarkMode ? 'transparent' : 'initial',
+                                fontWeight: 'bold',
+                                mb: 2,
+                                textShadow: isDarkMode 
+                                  ? '0 0 20px rgba(0, 245, 255, 0.3)'
+                                  : `0 2px 12px ${themeColors.primary}40`,
+                              }}
+                            >
                               ${data.price.toLocaleString()}
                             </Typography>
-                            {history.length > 1 && <PriceChart coin={coin} data={history} />}
+                            {history.length > 1 && (
+                              <Box sx={{ 
+                                position: 'relative',
+                                '&::after': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  height: '2px',
+                                  background: themeColors.primaryGradient,
+                                  borderRadius: '1px',
+                                  opacity: isDarkMode ? 0.6 : 0.8,
+                                },
+                              }}>
+                                <MemoizedPriceChart coin={coin} data={[...history]} />
+                              </Box>
+                            )}
                           </>
                         ) : (
                           <Skeleton height={60} />
                         )}
-                      </Box>
+                      </AnimatedCard>
                     </Grid>
                   );
                 })}
               </Grid>
             </CardContent>
-          </Card>
+          </AnimatedCard>
         </Grid>
 
-        {/* Account Summary */}
-        <Grid xs={12} md={4}>
-          <Card>
+        {/* Account Summary & Portfolio */}
+        <Grid xs={12} md={8}>
+          <AnimatedCard variant="glow" glowColor="rgba(0, 245, 255, 0.4)">
             <CardHeader
-              title="Account Summary"
-              avatar={<Avatar><AccountBalanceWallet /></Avatar>}
+              title={
+                <Typography 
+                  variant="h5" 
+                  fontWeight="bold"
+                  sx={{
+                    color: isDarkMode ? 'transparent' : themeColors.primary,
+                    background: isDarkMode ? themeColors.primaryGradient : 'transparent',
+                    backgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitBackgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitTextFillColor: isDarkMode ? 'transparent' : 'initial',
+                  }}
+                >
+                  Account Summary & Portfolio
+                </Typography>
+              }
+              avatar={
+                <Avatar sx={{
+                  background: themeColors.primaryGradient,
+                  boxShadow: isDarkMode 
+                    ? '0 8px 24px rgba(0, 245, 255, 0.4)'
+                    : '0 8px 24px rgba(0, 145, 234, 0.3)',
+                  border: `2px solid ${themeColors.cardBorder}`,
+                }}>
+                  <AccountBalanceWallet />
+                </Avatar>
+              }
             />
             <CardContent>
               {authState.user?.walletAddress ? (
                 accountSummary ? (
                   <Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography>Account Value:</Typography>
-                      <Typography fontWeight="bold">
-                        ${parseFloat(accountSummary.marginSummary.accountValue).toLocaleString()}
-                      </Typography>
+                    {/* Account Summary Stats */}
+                    <Grid container spacing={2} sx={{ mb: 3 }}>
+                      <Grid xs={6} sm={3}>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="primary" fontWeight="bold">
+                            ${formatCurrency(accountSummary.marginSummary.accountValue)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Account Value
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid xs={6} sm={3}>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="success.main" fontWeight="bold">
+                            ${formatCurrency(accountSummary.withdrawable)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Withdrawable
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid xs={6} sm={3}>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="warning.main" fontWeight="bold">
+                            ${formatCurrency(accountSummary.marginSummary.totalMarginUsed)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Margin Used
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid xs={6} sm={3}>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h6" color="info.main" fontWeight="bold">
+                            {accountSummary.assetPositions.length}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Positions
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+
+                    {/* Margin Usage Bar */}
+                    <Box sx={{ mb: 3 }}>
+                      <FuturisticProgress
+                        value={safeParseFloat(accountSummary.marginSummary.totalMarginUsed)}
+                        max={safeParseFloat(accountSummary.marginSummary.accountValue, 1)}
+                        label="Margin Usage"
+                        color="warning"
+                        animated={true}
+                        showPercentage={true}
+                        height={14}
+                      />
                     </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography>Withdrawable:</Typography>
-                      <Typography fontWeight="bold">
-                        ${parseFloat(accountSummary.marginSummary.withdrawable).toLocaleString()}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography>Open Positions:</Typography>
-                      <Typography fontWeight="bold">
-                        {accountSummary.assetPositions.length}
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={
-                        (parseFloat(accountSummary.marginSummary.totalMarginUsed) /
-                          parseFloat(accountSummary.marginSummary.accountValue)) *
-                        100
-                      }
-                      sx={{ mt: 2 }}
-                    />
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                      Margin Usage
-                    </Typography>
+
+                    {/* Portfolio Analytics */}
+                    {accountSummary.assetPositions.length > 0 && (
+                      <Box sx={{ 
+                        mb: 3, 
+                        p: 2, 
+                        background: themeColors.cardBackground,
+                        border: `1px solid ${themeColors.cardBorder}`,
+                        borderRadius: 2,
+                      }}>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                          Portfolio Summary
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Total PnL</Typography>
+                            {(() => {
+                              const totalPnL = accountSummary.assetPositions.reduce((total, pos) => {
+                                return total + safeParseFloat(pos.unrealizedPnl);
+                              }, 0);
+                              return (
+                                <Typography
+                                  variant="h6"
+                                  fontWeight="bold"
+                                  color={totalPnL >= 0 ? 'success.main' : 'error.main'}
+                                >
+                                  {totalPnL >= 0 ? '+' : ''}${formatCurrency(totalPnL)}
+                                </Typography>
+                              );
+                            })()}
+                          </Box>
+                          <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="body2" color="text.secondary">Avg. ROE</Typography>
+                            {(() => {
+                              const avgROE = accountSummary.assetPositions.length > 0 
+                                ? accountSummary.assetPositions.reduce((total, pos) => {
+                                    return total + safeParseFloat(pos.returnOnEquity);
+                                  }, 0) / accountSummary.assetPositions.length * 100
+                                : 0;
+                              return (
+                                <Typography
+                                  variant="h6"
+                                  fontWeight="bold"
+                                  color={avgROE >= 0 ? 'success.main' : 'error.main'}
+                                >
+                                  {avgROE >= 0 ? '+' : ''}{formatPercentage(avgROE)}%
+                                </Typography>
+                              );
+                            })()}
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
+
+                    {/* Portfolio Positions */}
+                    {accountSummary.assetPositions.length > 0 ? (
+                      <Box>
+                        <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                          <TrendingUp sx={{ mr: 1 }} />
+                          Your Positions ({accountSummary.assetPositions.length})
+                        </Typography>
+                        <List sx={{ p: 0 }}>
+                          {accountSummary.assetPositions.map((position, index) => {
+                            const pnl = safeParseFloat(position.unrealizedPnl);
+                            const pnlPercent = safeParseFloat(position.returnOnEquity) * 100;
+                            const isProfit = pnl >= 0;
+                            const positionSize = safeParseFloat(position.szi);
+                            const entryPrice = safeParseFloat(position.entryPx);
+                            const positionValue = safeParseFloat(position.positionValue);
+                            const leverage = safeParseFloat(position.leverage?.value, 1);
+                            
+                            return (
+                              <ListItem
+                                key={position.coin}
+                                sx={{
+                                  px: 0,
+                                  py: 1,
+                                  borderBottom: index < accountSummary.assetPositions.length - 1 ? 1 : 0,
+                                  borderColor: 'divider'
+                                }}
+                              >
+                                <ListItemAvatar>
+                                  <Avatar sx={{ 
+                                    bgcolor: isProfit ? 'success.main' : 'error.main',
+                                    width: 40,
+                                    height: 40
+                                  }}>
+                                    <Typography variant="caption" fontWeight="bold">
+                                      {position.coin}
+                                    </Typography>
+                                  </Avatar>
+                                </ListItemAvatar>
+                                <ListItemText
+                                  primary={
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <Box>
+                                        <Typography variant="body1" fontWeight="bold">
+                                          {position.coin}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                          {Math.abs(positionSize).toFixed(4)} {position.coin} • {leverage.toFixed(1)}x
+                                        </Typography>
+                                      </Box>
+                                      <Box sx={{ textAlign: 'right' }}>
+                                        <Typography
+                                          variant="body2"
+                                          fontWeight="bold"
+                                          color={isProfit ? 'success.main' : 'error.main'}
+                                        >
+                                          {isProfit ? '+' : ''}${formatCurrency(pnl)}
+                                        </Typography>
+                                        <Typography
+                                          variant="caption"
+                                          color={isProfit ? 'success.main' : 'error.main'}
+                                        >
+                                          {isProfit ? '+' : ''}{formatPercentage(pnlPercent)}%
+                                        </Typography>
+                                      </Box>
+                                    </Box>
+                                  }
+                                  secondary={
+                                    <Box>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                                        <Typography variant="caption" color="text.secondary">
+                                          Entry: ${formatCurrency(entryPrice)}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                          Value: ${formatCurrency(positionValue)}
+                                        </Typography>
+                                      </Box>
+                                      {position.liquidationPx && (
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                                          <Typography variant="caption" color="warning.main">
+                                            Liquidation: ${formatCurrency(safeParseFloat(position.liquidationPx))}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary">
+                                            Margin: ${formatCurrency(safeParseFloat(position.marginUsed))}
+                                          </Typography>
+                                        </Box>
+                                      )}
+                                    </Box>
+                                  }
+                                />
+                              </ListItem>
+                            );
+                          })}
+                        </List>
+                      </Box>
+                    ) : (
+                      <Box sx={{ textAlign: 'center', py: 3 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          No active positions
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Open a position on Hyperliquid to see it here
+                        </Typography>
+                      </Box>
+                    )}
                   </Box>
                 ) : (
                   <Box>
@@ -432,17 +866,35 @@ export const DashboardPage: React.FC = () => {
                 )
               ) : (
                 <Typography color="text.secondary">
-                  Connect wallet to view account summary
+                  Connect wallet to view account summary and portfolio
                 </Typography>
               )}
             </CardContent>
-          </Card>
+          </AnimatedCard>
         </Grid>
 
         {/* Recent Alerts */}
-        <Grid xs={12} md={6}>
-          <Card>
-            <CardHeader title="Recent Alerts" />
+        <Grid xs={12} md={4}>
+          <AnimatedCard variant="glow" glowColor="rgba(255, 23, 68, 0.4)">
+            <CardHeader 
+              title={
+                <Typography 
+                  variant="h6" 
+                  fontWeight="bold"
+                  sx={{
+                    color: isDarkMode ? 'transparent' : themeColors.accent,
+                    background: isDarkMode 
+                      ? 'linear-gradient(45deg, #FF1744 30%, #E91E63 90%)'
+                      : 'transparent',
+                    backgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitBackgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitTextFillColor: isDarkMode ? 'transparent' : 'initial',
+                  }}
+                >
+                  Recent Alerts
+                </Typography>
+              } 
+            />
             <CardContent sx={{ pt: 0 }}>
               {recentAlertsLoading ? (
                 <List>
@@ -500,13 +952,31 @@ export const DashboardPage: React.FC = () => {
                 </Typography>
               )}
             </CardContent>
-          </Card>
+          </AnimatedCard>
         </Grid>
 
         {/* Recent Notifications */}
-        <Grid xs={12} md={6}>
-          <Card>
-            <CardHeader title="Recent Notifications" />
+        <Grid xs={12} md={8}>
+          <AnimatedCard variant="glow" glowColor="rgba(0, 230, 118, 0.4)">
+            <CardHeader 
+              title={
+                <Typography 
+                  variant="h6" 
+                  fontWeight="bold"
+                  sx={{
+                    color: isDarkMode ? 'transparent' : themeColors.success,
+                    background: isDarkMode 
+                      ? 'linear-gradient(45deg, #00E676 30%, #69F0AE 90%)'
+                      : 'transparent',
+                    backgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitBackgroundClip: isDarkMode ? 'text' : 'initial',
+                    WebkitTextFillColor: isDarkMode ? 'transparent' : 'initial',
+                  }}
+                >
+                  Recent Notifications
+                </Typography>
+              } 
+            />
             <CardContent sx={{ pt: 0 }}>
               {notificationState.notifications.length ? (
                 <List sx={{ p: 0 }}>
@@ -551,7 +1021,7 @@ export const DashboardPage: React.FC = () => {
                 </Typography>
               )}
             </CardContent>
-          </Card>
+          </AnimatedCard>
         </Grid>
       </Grid>
     </Box>

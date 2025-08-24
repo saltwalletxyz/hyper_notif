@@ -25,7 +25,7 @@ export const authenticateToken = async (
       return;
     }
 
-    const decoded = jwt.verify(token, config.jwt.secret) as any;
+    const decoded = jwt.verify(token, config.jwt.secret as string) as any;
     
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -44,7 +44,7 @@ export const authenticateToken = async (
 
     req.user = {
       id: user.id,
-      email: user.email,
+      email: user.email || '',
       walletAddress: user.walletAddress || undefined,
     };
 
@@ -74,7 +74,7 @@ export const optionalAuth = async (
       return;
     }
 
-    const decoded = jwt.verify(token, config.jwt.secret) as any;
+    const decoded = jwt.verify(token, config.jwt.secret as string) as any;
     
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -89,7 +89,7 @@ export const optionalAuth = async (
     if (user && user.isActive) {
       req.user = {
         id: user.id,
-        email: user.email,
+        email: user.email || '',
         walletAddress: user.walletAddress || undefined,
       };
     }

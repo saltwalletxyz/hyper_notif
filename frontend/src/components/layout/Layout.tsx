@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { NavigationItem } from './NavigationItem';
 import { NotificationPanel } from './NotificationPanel';
+import { ThemeToggle } from '../ui/ThemeToggle';
 
 const drawerWidth = 280;
 
@@ -157,6 +158,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Welcome back, {authState.user?.name || authState.user?.email}
           </Typography>
+
+          <ThemeToggle />
 
           <IconButton
             size="large"

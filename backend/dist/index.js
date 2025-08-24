@@ -21,6 +21,7 @@ const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const alerts_routes_1 = __importDefault(require("./routes/alerts.routes"));
 const notifications_routes_1 = __importDefault(require("./routes/notifications.routes"));
 const market_routes_1 = __importDefault(require("./routes/market.routes"));
+const hyperliquid_routes_1 = __importDefault(require("./routes/hyperliquid.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
@@ -35,6 +36,8 @@ const hyperliquidService = new hyperliquid_service_1.HyperliquidService(config_1
 const notificationService = new notification_service_1.NotificationService();
 const alertMonitorService = new alertMonitor_service_1.AlertMonitorService(hyperliquidService, notificationService);
 const socketHandler = new socketHandler_1.SocketHandler(io, notificationService, hyperliquidService);
+// Set socket handler in alert monitor service
+alertMonitorService.setSocketHandler(socketHandler);
 // Middleware
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)(config_1.config.cors));
@@ -52,7 +55,7 @@ app.get('/health', async (req, res) => {
             timestamp: new Date().toISOString(),
             services: {
                 database: dbHealthy ? 'healthy' : 'unhealthy',
-                websocket: hyperliquidService.listenerCount('connected') > 0 ? 'connected' : 'disconnected',
+                websocket: hyperliquidService.isWebSocketConnected() ? 'connected' : 'disconnected',
             },
         });
     }
@@ -68,6 +71,7 @@ app.use('/api/auth', auth_routes_1.default);
 app.use('/api/alerts', alerts_routes_1.default);
 app.use('/api/notifications', notifications_routes_1.default);
 app.use('/api/market', market_routes_1.default);
+app.use('/api/hyperliquid', hyperliquid_routes_1.default);
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err);
@@ -116,6 +120,11 @@ const startServer = async () => {
         console.log('Database connected');
         // Connect to Hyperliquid WebSocket
         hyperliquidService.connectWebSocket();
+        // Wait for WebSocket to connect before subscribing
+        hyperliquidService.on('connected', () => {
+            console.log('WebSocket connected, subscribing to price updates...');
+            hyperliquidService.subscribeToPrices();
+        });
         // Start alert monitoring
         await alertMonitorService.startMonitoring();
         // Start HTTP server

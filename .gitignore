@@ -4,10 +4,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
 # Logs
 logs
 *.log
+backend/backend.log
+frontend/frontend.log
 backend.log
 
 # Runtime data
@@ -17,8 +20,14 @@ pids
 *.pid.lock
 
 # Build outputs
-dist/
 build/
+dist/
+.next/
+.nuxt/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
 
 # Coverage directory used by tools like istanbul
 coverage/
@@ -49,6 +58,7 @@ coverage/
 
 # Cache
 .cache/
+.parcel-cache/
 
 # IDE files
 .vscode/
@@ -70,21 +80,34 @@ Thumbs.db
 *.tsbuildinfo
 
 # Prisma
-dev.db
-dev.db-journal
-*.db
-*.sqlite
-*.sqlite3
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# Backend compiled files
+backend/dist/
+
+# Frontend build
+frontend/build/
+frontend/.env
 
 # Package lock files (optional - comment if you want to keep them)
 package-lock.json
+frontend/package-lock.json
+backend/package-lock.json
 
 # Temporary files
 *.tmp
 *.temp
 
-# Generated files
-/src/generated/prisma
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
 
 # Misc
 *.orig

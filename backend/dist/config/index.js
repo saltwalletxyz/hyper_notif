@@ -26,6 +26,12 @@ exports.config = {
         user: process.env.EMAIL_USER || '',
         pass: process.env.EMAIL_PASS || '',
     },
+    discord: {
+        botToken: process.env.DISCORD_BOT_TOKEN || '',
+    },
+    telegram: {
+        botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    },
     redis: {
         url: process.env.REDIS_URL || 'redis://localhost:6379',
     },

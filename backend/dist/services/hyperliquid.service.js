@@ -67,11 +67,47 @@ class HyperliquidService extends events_1.EventEmitter {
         return response.data.result;
     }
     async getAccountSummary(user) {
-        const response = await this.axiosClient.post('/info', {
-            type: 'clearinghouseState',
-            user,
-        });
-        return response.data.result;
+        const [perpsResponse, spotResponse] = await Promise.all([
+            this.axiosClient.post('/info', {
+                type: 'clearinghouseState',
+                user,
+            }),
+            this.axiosClient.post('/info', {
+                type: 'spotClearinghouseState',
+                user,
+            }),
+        ]);
+        const perpsData = perpsResponse.data;
+        const spotData = spotResponse.data;
+        // Calculate total account value including spot balances
+        const perpsValue = parseFloat(perpsData.marginSummary?.accountValue || '0');
+        const perpsWithdrawable = parseFloat(perpsData.withdrawable || '0');
+        const spotValue = spotData.balances?.reduce((total, balance) => {
+            return total + parseFloat(balance.total || '0') * (balance.coin === 'USDC' ? 1 : 0);
+        }, 0) || 0;
+        // For spot, withdrawable should be the USDC balance + any non-USDC tokens converted
+        const spotWithdrawable = spotData.balances?.reduce((total, balance) => {
+            const totalBalance = parseFloat(balance.total || '0');
+            const holdBalance = parseFloat(balance.hold || '0');
+            const available = totalBalance - holdBalance;
+            if (balance.coin === 'USDC') {
+                return total + available;
+            }
+            else {
+                // For other tokens, use entryNtl value (USD equivalent)
+                return total + parseFloat(balance.entryNtl || '0');
+            }
+        }, 0) || 0;
+        // Combine the data
+        return {
+            ...perpsData,
+            marginSummary: {
+                ...perpsData.marginSummary,
+                accountValue: (perpsValue + spotValue).toString(),
+            },
+            withdrawable: (perpsWithdrawable + spotWithdrawable).toString(),
+            spotBalances: spotData.balances || [],
+        };
     }
     async getOrderStatus(user, oid) {
         const response = await this.axiosClient.post('/info', {
@@ -86,7 +122,7 @@ class HyperliquidService extends events_1.EventEmitter {
             type: 'spotClearinghouseState',
             user,
         });
-        return response.data.result;
+        return response.data;
     }
     async getFundingRates() {
         const response = await this.axiosClient.post('/info', {
@@ -288,6 +324,77 @@ class HyperliquidService extends events_1.EventEmitter {
             this.wsClient = null;
         }
         this.subscriptions.clear();
+    }
+    isWebSocketConnected() {
+        return this.wsClient !== null && this.wsClient.readyState === 1; // 1 = OPEN
+    }
+    // User-specific data fetching methods for wallet integration
+    async getUserPositions(walletAddress) {
+        try {
+            const accountSummary = await this.getAccountSummary(walletAddress);
+            return accountSummary.assetPositions || [];
+        }
+        catch (error) {
+            console.error(`Error fetching positions for ${walletAddress}:`, error);
+            return [];
+        }
+    }
+    async getUserOrders(walletAddress) {
+        try {
+            return await this.getOpenOrders(walletAddress);
+        }
+        catch (error) {
+            console.error(`Error fetching orders for ${walletAddress}:`, error);
+            return [];
+        }
+    }
+    async getUserFillHistory(walletAddress, limit = 50) {
+        try {
+            return await this.getUserFills(walletAddress, limit);
+        }
+        catch (error) {
+            console.error(`Error fetching fill history for ${walletAddress}:`, error);
+            return [];
+        }
+    }
+    async getUserAccountValue(walletAddress) {
+        try {
+            const accountSummary = await this.getAccountSummary(walletAddress);
+            return parseFloat(accountSummary.marginSummary?.accountValue || '0');
+        }
+        catch (error) {
+            console.error(`Error fetching account value for ${walletAddress}:`, error);
+            return 0;
+        }
+    }
+    async getUserFundingHistory(walletAddress) {
+        try {
+            const response = await this.axiosClient.post('/info', {
+                type: 'userFunding',
+                user: walletAddress,
+            });
+            return response.data.result || [];
+        }
+        catch (error) {
+            console.error(`Error fetching funding history for ${walletAddress}:`, error);
+            return [];
+        }
+    }
+    async syncUserData(walletAddress) {
+        const [positions, orders, fillHistory, accountValue, fundingHistory] = await Promise.all([
+            this.getUserPositions(walletAddress),
+            this.getUserOrders(walletAddress),
+            this.getUserFillHistory(walletAddress),
+            this.getUserAccountValue(walletAddress),
+            this.getUserFundingHistory(walletAddress),
+        ]);
+        return {
+            positions,
+            orders,
+            fillHistory,
+            accountValue,
+            fundingHistory,
+        };
     }
 }
 exports.HyperliquidService = HyperliquidService;

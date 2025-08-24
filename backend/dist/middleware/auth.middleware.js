@@ -31,7 +31,7 @@ const authenticateToken = async (req, res, next) => {
         }
         req.user = {
             id: user.id,
-            email: user.email,
+            email: user.email || '',
             walletAddress: user.walletAddress || undefined,
         };
         next();
@@ -70,7 +70,7 @@ const optionalAuth = async (req, res, next) => {
         if (user && user.isActive) {
             req.user = {
                 id: user.id,
-                email: user.email,
+                email: user.email || '',
                 walletAddress: user.walletAddress || undefined,
             };
         }

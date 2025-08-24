@@ -1,11 +1,12 @@
 import { io, Socket } from 'socket.io-client';
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'http://localhost:5000';
+const WS_URL = process.env.REACT_APP_WS_URL || 'http://localhost:5001';
 
 export type WebSocketEvent = 
   | 'notification'
   | 'notification:count'
   | 'alerts:count'
+  | 'alert:update'
   | 'price:update'
   | 'order:update'
   | 'fill:new'

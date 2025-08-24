@@ -9,9 +9,13 @@ class AlertMonitorService {
     monitoringInterval = null;
     priceCache = new Map();
     previousValues = new Map();
+    socketHandler = null;
     constructor(hyperliquidService, notificationService) {
         this.hyperliquidService = hyperliquidService;
         this.notificationService = notificationService;
+    }
+    setSocketHandler(socketHandler) {
+        this.socketHandler = socketHandler;
     }
     async startMonitoring() {
         console.log('Starting alert monitoring service...');
@@ -46,11 +50,13 @@ class AlertMonitorService {
         });
     }
     async handlePriceUpdate(data) {
-        // Update price cache
-        if (data.mids) {
+        console.log('Received price update:', data);
+        // Update price cache - Hyperliquid sends {"mids": {"BTC": "114856.5", "ETH": "4814.65", ...}}
+        if (data && data.mids) {
             Object.entries(data.mids).forEach(([coin, price]) => {
                 const numPrice = parseFloat(price);
                 this.priceCache.set(coin, numPrice);
+                console.log(`Updated price for ${coin}: ${numPrice}`);
             });
         }
         // Check price-related alerts
@@ -135,7 +141,7 @@ class AlertMonitorService {
                     in: [client_1.AlertType.PRICE_ABOVE, client_1.AlertType.PRICE_BELOW, client_1.AlertType.PRICE_CHANGE_PERCENT],
                 },
                 isActive: true,
-                triggered: false,
+                // Only check untriggered alerts for PRICE_ABOVE/PRICE_BELOW to prevent spam
             },
             include: { user: true },
         });
@@ -156,33 +162,64 @@ class AlertMonitorService {
             this.priceCache.set(alert.asset, currentPrice);
         }
         // Update current value
-        await database_service_1.db.alert.update({
+        const updatedAlert = await database_service_1.db.alert.update({
             where: { id: alert.id },
             data: { currentValue: currentPrice },
         });
+        // Emit real-time update via Socket.io
+        if (this.socketHandler) {
+            this.socketHandler.broadcastToUser(alert.userId, 'alert:update', {
+                id: alert.id,
+                currentValue: currentPrice,
+                asset: alert.asset,
+            });
+        }
         const previousPrice = this.previousValues.get(`${alert.id}-price`) || currentPrice;
         let shouldTrigger = false;
         switch (alert.type) {
             case client_1.AlertType.PRICE_ABOVE:
-                shouldTrigger = this.checkCondition(currentPrice, alert.value, alert.condition);
+                // Only trigger if already triggered=false AND price crosses above
+                if (!alert.triggered) {
+                    shouldTrigger = previousPrice <= alert.value && currentPrice > alert.value;
+                }
                 break;
             case client_1.AlertType.PRICE_BELOW:
-                shouldTrigger = this.checkCondition(currentPrice, alert.value, alert.condition);
+                // Only trigger if already triggered=false AND price crosses below
+                if (!alert.triggered) {
+                    shouldTrigger = previousPrice >= alert.value && currentPrice < alert.value;
+                }
                 break;
             case client_1.AlertType.PRICE_CHANGE_PERCENT:
                 const changePercent = ((currentPrice - previousPrice) / previousPrice) * 100;
                 shouldTrigger = Math.abs(changePercent) >= alert.value;
                 break;
         }
-        // Check for crossing conditions
+        // Check for explicit crossing conditions
         if (alert.condition === client_1.AlertCondition.CROSSES_ABOVE) {
             shouldTrigger = previousPrice <= alert.value && currentPrice > alert.value;
         }
         else if (alert.condition === client_1.AlertCondition.CROSSES_BELOW) {
             shouldTrigger = previousPrice >= alert.value && currentPrice < alert.value;
         }
-        if (shouldTrigger) {
+        if (shouldTrigger && !alert.triggered) {
             await this.triggerAlert(alert, { currentPrice, previousPrice });
+        }
+        // Reset alert if price moves to opposite side (so it can trigger again)
+        if (alert.triggered) {
+            let shouldReset = false;
+            if (alert.type === client_1.AlertType.PRICE_ABOVE && currentPrice <= alert.value) {
+                shouldReset = true;
+            }
+            else if (alert.type === client_1.AlertType.PRICE_BELOW && currentPrice >= alert.value) {
+                shouldReset = true;
+            }
+            if (shouldReset) {
+                await database_service_1.db.alert.update({
+                    where: { id: alert.id },
+                    data: { triggered: false },
+                });
+                console.log(`Reset alert ${alert.id} (${alert.name}) - price moved to opposite side`);
+            }
         }
         // Update previous value
         this.previousValues.set(`${alert.id}-price`, currentPrice);
@@ -333,6 +370,8 @@ class AlertMonitorService {
                 email: alert.notifyEmail,
                 webhook: alert.notifyWebhook,
                 inApp: alert.notifyInApp,
+                discord: alert.notifyDiscord,
+                telegram: alert.notifyTelegram,
             },
         });
         // Reset alert if it's a crossing condition

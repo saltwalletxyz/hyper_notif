@@ -18,6 +18,7 @@ import authRoutes from './routes/auth.routes';
 import alertsRoutes from './routes/alerts.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import marketRoutes from './routes/market.routes';
+import hyperliquidRoutes from './routes/hyperliquid.routes';
 
 dotenv.config();
 
@@ -35,6 +36,9 @@ const hyperliquidService = new HyperliquidService(config.hyperliquid);
 const notificationService = new NotificationService();
 const alertMonitorService = new AlertMonitorService(hyperliquidService, notificationService);
 const socketHandler = new SocketHandler(io, notificationService, hyperliquidService);
+
+// Set socket handler in alert monitor service
+alertMonitorService.setSocketHandler(socketHandler);
 
 // Middleware
 app.use(helmet());
@@ -71,6 +75,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/market', marketRoutes);
+app.use('/api/hyperliquid', hyperliquidRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -133,6 +138,12 @@ const startServer = async () => {
     
     // Connect to Hyperliquid WebSocket
     hyperliquidService.connectWebSocket();
+    
+    // Wait for WebSocket to connect before subscribing
+    hyperliquidService.on('connected', () => {
+      console.log('WebSocket connected, subscribing to price updates...');
+      hyperliquidService.subscribeToPrices();
+    });
     
     // Start alert monitoring
     await alertMonitorService.startMonitoring();

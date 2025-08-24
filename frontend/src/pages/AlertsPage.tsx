@@ -32,6 +32,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { apiService } from '../services/api';
 import { Alert as AlertType, AlertType as AlertTypeEnum, AlertCondition, MarketType, CreateAlertRequest } from '../types';
 import { formatDistanceToNow } from 'date-fns';
+import { websocketService } from '../services/websocket';
+import { useEffect } from 'react';
 
 export const AlertsPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -42,8 +44,41 @@ export const AlertsPage: React.FC = () => {
   const { data: alertsData, isLoading } = useQuery({
     queryKey: ['alerts'],
     queryFn: () => apiService.getAlerts({ limit: 50 }),
-    refetchInterval: 30000,
+    refetchInterval: 60000, // Reduced frequency since we have real-time updates
   });
+
+  // Listen for real-time alert updates
+  useEffect(() => {
+    const handleAlertUpdate = (update: { id: string; currentValue: number; asset: string }) => {
+      // Update the cached alert data
+      queryClient.setQueryData(['alerts'], (oldData: any) => {
+        if (!oldData) return oldData;
+        
+        return {
+          ...oldData,
+          alerts: oldData.alerts.map((alert: AlertType) => 
+            alert.id === update.id 
+              ? { ...alert, currentValue: update.currentValue }
+              : alert
+          ),
+        };
+      });
+    };
+
+    // Subscribe to alert updates
+    websocketService.on('alert:update', handleAlertUpdate);
+
+    // Subscribe to price updates for all alert assets
+    if (alertsData?.alerts) {
+      const uniqueAssets = Array.from(new Set(alertsData.alerts.map(alert => alert.asset)));
+      websocketService.subscribeToPrices(uniqueAssets);
+    }
+
+    return () => {
+      websocketService.off('alert:update', handleAlertUpdate);
+      websocketService.unsubscribeFromPrices();
+    };
+  }, [queryClient, alertsData?.alerts]);
 
   const createMutation = useMutation({
     mutationFn: apiService.createAlert,
@@ -88,6 +123,8 @@ export const AlertsPage: React.FC = () => {
       notifyEmail: true,
       notifyWebhook: false,
       notifyInApp: true,
+      notifyDiscord: false,
+      notifyTelegram: false,
     },
   });
 
@@ -109,6 +146,8 @@ export const AlertsPage: React.FC = () => {
       notifyEmail: alert.notifyEmail,
       notifyWebhook: alert.notifyWebhook,
       notifyInApp: alert.notifyInApp,
+      notifyDiscord: alert.notifyDiscord,
+      notifyTelegram: alert.notifyTelegram,
     });
     setDialogOpen(true);
   };
@@ -282,7 +321,13 @@ export const AlertsPage: React.FC = () => {
       </Fab>
 
       {/* Create/Edit Alert Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={dialogOpen} 
+        onClose={() => setDialogOpen(false)} 
+        maxWidth="sm" 
+        fullWidth
+        scroll="paper"
+      >
         <DialogTitle>
           {editingAlert ? 'Edit Alert' : 'Create New Alert'}
         </DialogTitle>
@@ -436,6 +481,26 @@ export const AlertsPage: React.FC = () => {
                     <FormControlLabel
                       control={<Switch checked={value} onChange={onChange} />}
                       label="Webhook"
+                    />
+                  )}
+                />
+                <Controller
+                  name="notifyDiscord"
+                  control={control}
+                  render={({ field: { value, onChange } }) => (
+                    <FormControlLabel
+                      control={<Switch checked={value} onChange={onChange} />}
+                      label="Discord"
+                    />
+                  )}
+                />
+                <Controller
+                  name="notifyTelegram"
+                  control={control}
+                  render={({ field: { value, onChange } }) => (
+                    <FormControlLabel
+                      control={<Switch checked={value} onChange={onChange} />}
+                      label="Telegram"
                     />
                   )}
                 />

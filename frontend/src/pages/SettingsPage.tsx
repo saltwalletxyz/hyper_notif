@@ -19,6 +19,7 @@ import {
   Person,
   Security,
   AccountBalanceWallet,
+  Notifications,
 } from '@mui/icons-material';
 import { useForm } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
@@ -30,6 +31,11 @@ interface ProfileForm {
   walletAddress: string;
 }
 
+interface NotificationForm {
+  discordUserId: string;
+  telegramChatId: string;
+}
+
 interface PasswordForm {
   currentPassword: string;
   newPassword: string;
@@ -37,7 +43,7 @@ interface PasswordForm {
 }
 
 export const SettingsPage: React.FC = () => {
-  const { state: authState, updateProfile } = useAuth();
+  const { state: authState } = useAuth();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -46,6 +52,13 @@ export const SettingsPage: React.FC = () => {
     defaultValues: {
       name: authState.user?.name || '',
       walletAddress: authState.user?.walletAddress || '',
+    },
+  });
+
+  const notificationForm = useForm<NotificationForm>({
+    defaultValues: {
+      discordUserId: authState.user?.discordUserId || '',
+      telegramChatId: authState.user?.telegramChatId || '',
     },
   });
 
@@ -60,12 +73,39 @@ export const SettingsPage: React.FC = () => {
   const profileMutation = useMutation({
     mutationFn: (data: ProfileForm) => apiService.updateProfile(data),
     onSuccess: (updatedUser) => {
-      updateProfile({ name: updatedUser.name, walletAddress: updatedUser.walletAddress });
+      // Update localStorage with the updated user data
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedUserData = { ...currentUser, ...updatedUser };
+      localStorage.setItem('user', JSON.stringify(updatedUserData));
+      
       setSuccessMessage('Profile updated successfully');
       setErrorMessage('');
     },
     onError: (error: any) => {
       setErrorMessage(error.message || 'Failed to update profile');
+      setSuccessMessage('');
+    },
+  });
+
+  const notificationMutation = useMutation({
+    mutationFn: (data: NotificationForm) => apiService.updateNotificationSettings(data),
+    onSuccess: (updatedUser) => {
+      // Update localStorage with the updated user data
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedUserData = { ...currentUser, ...updatedUser };
+      localStorage.setItem('user', JSON.stringify(updatedUserData));
+      
+      setSuccessMessage('Notification settings updated successfully');
+      setErrorMessage('');
+      
+      // Refresh the form with the updated values
+      notificationForm.reset({
+        discordUserId: updatedUser.discordUserId || '',
+        telegramChatId: updatedUser.telegramChatId || '',
+      });
+    },
+    onError: (error: any) => {
+      setErrorMessage(error.message || 'Failed to update notification settings');
       setSuccessMessage('');
     },
   });
@@ -87,6 +127,10 @@ export const SettingsPage: React.FC = () => {
 
   const onProfileSubmit = (data: ProfileForm) => {
     profileMutation.mutate(data);
+  };
+
+  const onNotificationSubmit = (data: NotificationForm) => {
+    notificationMutation.mutate(data);
   };
 
   const onPasswordSubmit = (data: PasswordForm) => {
@@ -178,6 +222,51 @@ export const SettingsPage: React.FC = () => {
                   disabled={profileMutation.isPending}
                 >
                   Update Profile
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Notification Settings */}
+        <Grid xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <Avatar sx={{ mr: 2, bgcolor: 'warning.main' }}>
+                  <Notifications />
+                </Avatar>
+                <Typography variant="h6" fontWeight="bold">
+                  Notification Settings
+                </Typography>
+              </Box>
+
+              <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
+                <TextField
+                  fullWidth
+                  label="Discord User ID"
+                  margin="normal"
+                  placeholder="e.g., 123456789012345678"
+                  {...notificationForm.register('discordUserId')}
+                  helperText="Enter your Discord user ID to receive notifications via Discord. Find it by enabling Developer Mode and right-clicking your username."
+                />
+
+                <TextField
+                  fullWidth
+                  label="Telegram Chat ID"
+                  margin="normal"
+                  placeholder="e.g., 123456789"
+                  {...notificationForm.register('telegramChatId')}
+                  helperText="Message @Hype_Notify_bot on Telegram and use /start to get your chat ID"
+                />
+
+                <Button
+                  type="submit"
+                  variant="contained"
+                  sx={{ mt: 2 }}
+                  disabled={notificationMutation.isPending}
+                >
+                  Update Notifications
                 </Button>
               </form>
             </CardContent>

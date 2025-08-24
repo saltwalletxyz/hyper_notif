@@ -3,6 +3,8 @@ export interface User {
   email: string;
   name?: string;
   walletAddress?: string;
+  discordUserId?: string;
+  telegramChatId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,6 +31,8 @@ export interface Alert {
   notifyEmail: boolean;
   notifyWebhook: boolean;
   notifyInApp: boolean;
+  notifyDiscord: boolean;
+  notifyTelegram: boolean;
   metadata?: any;
   createdAt: string;
   updatedAt: string;
@@ -161,6 +165,8 @@ export interface CreateAlertRequest {
   notifyEmail?: boolean;
   notifyWebhook?: boolean;
   notifyInApp?: boolean;
+  notifyDiscord?: boolean;
+  notifyTelegram?: boolean;
   metadata?: any;
 }
 

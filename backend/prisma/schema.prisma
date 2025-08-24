@@ -9,11 +9,26 @@ datasource db {
 
 model User {
   id             String          @id @default(cuid())
-  email          String          @unique
-  password       String
+  email          String?         @unique // Made optional for wallet-only users
+  password       String?         // Made optional for wallet-only auth
   name           String?
   walletAddress  String?         @unique
   isActive       Boolean         @default(true)
+  
+  // Wallet authentication fields
+  isWalletUser   Boolean         @default(false) // True if user registered via wallet
+  walletType     String?         // MetaMask, WalletConnect, etc.
+  connectedAt    DateTime?       // When wallet was first connected
+  lastLoginAt    DateTime?       // Track login activity
+  
+  // Hyperliquid integration
+  hyperliquidAccountValue Float?  // Cache account value
+  hyperliquidLastSync    DateTime? // Last data sync timestamp
+  
+  // Notification platform integrations
+  discordUserId   String? // Discord user ID for notifications
+  telegramChatId  String? // Telegram chat ID for notifications
+  
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   
@@ -21,6 +36,15 @@ model User {
   notifications  Notification[]
   portfolios     Portfolio[]
   webhooks       Webhook[]
+  
+  // Hyperliquid data relations
+  hyperliquidPositions HyperliquidPosition[]
+  hyperliquidOrders    HyperliquidOrder[]
+  hyperliquidFundings  HyperliquidFunding[]
+  
+  // Add indexes for performance
+  @@index([walletAddress])
+  @@index([isWalletUser])
 }
 
 model Alert {
@@ -44,6 +68,8 @@ model Alert {
   notifyEmail     Boolean         @default(true)
   notifyWebhook   Boolean         @default(false)
   notifyInApp     Boolean         @default(true)
+  notifyDiscord   Boolean         @default(false)
+  notifyTelegram  Boolean         @default(false)
   
   metadata        Json?           // Additional configuration
   createdAt       DateTime        @default(now())
@@ -170,6 +196,77 @@ model Webhook {
   @@index([userId])
 }
 
+model HyperliquidPosition {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  coin            String      // Asset symbol (BTC, ETH, etc.)
+  szi             String      // Position size (signed)
+  entryPx         String      // Entry price
+  positionValue   String      // Notional value
+  unrealizedPnl   String      // Current P&L
+  returnOnEquity  String      // ROE percentage
+  leverage        String      // Current leverage
+  
+  maxLeverage     String?     // Max available leverage
+  liquidationPx   String?     // Liquidation price
+  marginUsed      String?     // Margin used for position
+  
+  isActive        Boolean     @default(true)
+  lastUpdated     DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+  
+  @@unique([userId, coin]) // One position per coin per user
+  @@index([userId])
+  @@index([coin])
+}
+
+model HyperliquidOrder {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  coin            String      // Asset symbol
+  side            String      // "A" for ask/sell, "B" for bid/buy
+  limitPx         String      // Limit price
+  sz              String      // Order size
+  oid             Int         // Order ID from Hyperliquid
+  timestamp       BigInt      // Order timestamp
+  origSz          String      // Original size
+  
+  orderType       String?     // Order type details
+  reduceOnly      Boolean     @default(false)
+  ioc             Boolean     @default(false) // Immediate or Cancel
+  cloid           String?     // Client order ID
+  
+  isActive        Boolean     @default(true)
+  lastUpdated     DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+  
+  @@unique([userId, oid]) // Unique order per user
+  @@index([userId])
+  @@index([coin])
+}
+
+model HyperliquidFunding {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  coin            String      // Asset symbol
+  fundingRate     String      // Funding rate
+  premium         String?     // Premium component
+  fundingPayment  String      // Actual payment amount
+  timestamp       BigInt      // When funding occurred
+  
+  createdAt       DateTime    @default(now())
+  
+  @@unique([userId, coin, timestamp])
+  @@index([userId])
+  @@index([timestamp])
+}
+
 model MarketData {
   id              String      @id @default(cuid())
   asset           String
@@ -229,6 +326,8 @@ enum NotificationChannel {
   EMAIL
   WEBHOOK
   IN_APP
+  DISCORD
+  TELEGRAM
 }
 
 enum NotificationStatus {
