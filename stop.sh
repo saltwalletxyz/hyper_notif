@@ -62,7 +62,7 @@ pkill -f "react-scripts" 2>/dev/null && echo -e "${GREEN}✅ Killed React proces
 pkill -f "nodemon" 2>/dev/null && echo -e "${GREEN}✅ Killed nodemon processes${NC}" || true
 
 # Kill by port
-for port in 5001 3002; do
+for port in 5000 3002; do
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${YELLOW}🔌 Killing process on port $port...${NC}"
         lsof -ti:$port | xargs kill -9 2>/dev/null || true
@@ -71,13 +71,15 @@ for port in 5001 3002; do
 done
 
 # Clean up log files (optional)
-read -p "🗑️  Remove log files? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    rm -f backend.log frontend.log
-    echo -e "${GREEN}✅ Log files removed${NC}"
+if [ -d "logs" ]; then
+    read -p "🗑️  Remove log files? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        rm -f logs/backend.log logs/frontend.log backend.log frontend.log
+        echo -e "${GREEN}✅ Log files removed${NC}"
+    fi
 fi
 
 echo ""
 echo -e "${GREEN}🎉 All services stopped successfully!${NC}"
-echo -e "${BLUE}To start again, run: ./start.sh${NC}"
+echo -e "${BLUE}To start again, run: ./setup-and-start.sh${NC}"

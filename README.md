@@ -65,44 +65,64 @@ An advanced, real-time notification system for Hyperliquid traders with comprehe
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ and npm
-- PostgreSQL database
-- Redis (optional, for advanced caching)
+- **Node.js 18+** and **npm** - [Download here](https://nodejs.org/)
+- **Git** - For cloning the repository
+- **PostgreSQL database** (optional - SQLite works for development)
 
 ### 1. Clone the Repository
 ```bash
-git clone <repository-url>
-cd hyperliquid-notify
+git clone https://github.com/saltwalletxyz/hyper_notif.git
+cd hyper_notif
 ```
 
-### 2. Backend Setup
+### 2. One-Command Setup and Start
+```bash
+# Make the setup script executable and run it
+chmod +x setup-and-start.sh
+./setup-and-start.sh
+```
+
+**That's it! 🎉** The script will automatically:
+- ✅ Check prerequisites (Node.js, npm)
+- ✅ Install all dependencies (root, backend, frontend)
+- ✅ Set up environment files
+- ✅ Configure the database
+- ✅ Start backend on port **5000**
+- ✅ Start frontend on port **3002**
+- ✅ Verify both services are running
+
+### 3. Alternative: Manual Setup
+
+If you prefer manual setup or the script doesn't work:
+
+#### Backend Setup
 ```bash
 cd backend
 npm install
 
-# Copy environment file and configure
+# Copy and configure environment file
 cp .env.example .env
-# Edit .env with your database URL and other settings
+# Edit .env with your database URL and settings
 
 # Generate Prisma client and run migrations
 npx prisma generate
 npx prisma migrate dev
 
-# Start the backend server
-npm run dev
+# Start backend server
+npm run dev  # Runs on port 5000
 ```
 
-### 3. Frontend Setup
+#### Frontend Setup
 ```bash
-cd ../frontend
+cd frontend
 npm install
 
 # Copy environment file
 cp .env.example .env
-# Edit .env with your API URLs
+# Edit .env with API URLs
 
-# Start the frontend development server
-npm start
+# Start frontend server
+PORT=3002 npm start  # Runs on port 3002
 ```
 
 ### 4. Database Configuration
@@ -193,7 +213,7 @@ EMAIL_USER=your-email@example.com
 EMAIL_PASS=your-app-password
 
 # Frontend URL (for CORS)
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:3002
 ```
 
 #### Frontend (.env)
@@ -201,6 +221,88 @@ FRONTEND_URL=http://localhost:3000
 REACT_APP_API_URL=http://localhost:5000/api
 REACT_APP_WS_URL=http://localhost:5000
 ```
+
+### 5. Access the Application
+
+Once both services are running, you can access:
+
+- **🌐 Main Application**: http://localhost:3002
+- **🔧 Backend API**: http://localhost:5000
+- **❤️ Health Check**: http://localhost:5000/health
+- **📊 Market Data**: http://localhost:5000/api/market/assets
+
+### 6. Stopping the Application
+
+To stop both services:
+```bash
+./stop.sh
+```
+
+Or press `Ctrl+C` if running the setup script interactively.
+
+## 🛠️ Development Scripts
+
+The repository includes several helpful scripts:
+
+- **`./setup-and-start.sh`** - Complete setup and startup (recommended)
+- **`./stop.sh`** - Stop all running services
+- **Backend only**: `cd backend && npm run dev`
+- **Frontend only**: `cd frontend && PORT=3002 npm start`
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Port Already in Use
+If you see port errors:
+```bash
+# Kill processes on the required ports
+lsof -ti:5000 | xargs kill -9  # Backend port
+lsof -ti:3002 | xargs kill -9  # Frontend port
+```
+
+#### Database Connection Issues
+```bash
+# Check if PostgreSQL is running
+brew services start postgresql  # macOS
+sudo service postgresql start   # Linux
+
+# Reset database (if needed)
+cd backend
+npx prisma migrate reset
+npx prisma generate
+```
+
+#### Node.js Version Issues
+```bash
+# Check your Node.js version
+node --version  # Should be 18.x or higher
+
+# Install/update Node.js from https://nodejs.org/
+# Or use nvm:
+nvm install 18
+nvm use 18
+```
+
+#### Frontend Won't Compile
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+```
+
+#### Backend Won't Start
+```bash
+cd backend
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Getting Help
+- Check the log files: `tail -f logs/backend.log` and `tail -f logs/frontend.log`
+- Ensure all environment variables are set in `.env` files
+- Verify database connection string in `backend/.env`
+- Make sure ports 5000 and 3002 are available
 
 ## 📚 API Documentation
 
