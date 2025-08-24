@@ -393,7 +393,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: Report bugs and request features via GitHub Issues
 - **Discussions**: Join community discussions in GitHub Discussions
-- **Email**: Contact us at support@hyperliquid-notify.com
+- **Email**: Contact us at contact.nikhil2002@gmail.com
 
 ## 🗺️ Roadmap
 
